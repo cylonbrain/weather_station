@@ -1,11 +1,9 @@
-#include <VirtualWire.h>
-
 #include <Wire.h>
 #include <VirtualWire.h>
 #include <Adafruit_BMP085.h>
 #include <dht.h>
-#include<stdlib.h>
-
+#include <stdlib.h>
+#include <movingAvg.h>
 
 dht DHT;
 Adafruit_BMP085 bmp;
@@ -17,30 +15,31 @@ Adafruit_BMP085 bmp;
 #define SAMPLES 2
 #define OUTPUT_STRING_LENGTH 64
 
-int sensorValue = 0;
-float temperature1[SAMPLES];
-float temperature2[SAMPLES];
-int32_t pressure1[SAMPLES];
-int32_t pressure2[SAMPLES];
-float altitude[SAMPLES];
-float humidity[SAMPLES];
-int illumination[SAMPLES];
-unsigned int moisture[SAMPLES];
+movingAvg avg_temperature1;
+movingAvg avg_temperature2;
+movingAvg avg_pressure1;
+movingAvg avg_pressure2;
+movingAvg avg_altitude;
+movingAvg avg_humidity;
+movingAvg avg_illumination;
+movingAvg avg_moisture;
+
+float temperature1;
+float temperature2;
+float pressure1;
+float pressure2;
+float altitude;
+float humidity;
+float illumination;
+float moisture;
+
 
 int current = 0;
 String output_string;
 
 void setup()
 {
-  memset(temperature1,0,sizeof(temperature1));
-  memset(temperature2,0,sizeof(temperature2));
-  memset(pressure1,0,sizeof(pressure1));
-  memset(pressure2,0,sizeof(pressure2));
-  memset(altitude,0,sizeof(altitude));
-  memset(humidity,0,sizeof(humidity));
-  memset(illumination,0,sizeof(illumination));
-  memset(moisture,0,sizeof(moisture));
-  
+
   vw_set_tx_pin(TRANSMITTER_PIN);
   vw_setup(2000);
   Serial.begin(9600);
@@ -61,80 +60,63 @@ void loop()
   // READ DATA
   int chk = DHT.read22(DHT22_PIN);          
   if(chk == DHTLIB_OK){
-    humidity[current] = DHT.humidity;
-    temperature1[current] = DHT.temperature;
+    humidity = DHT.humidity;
+    temperature1 = DHT.temperature;
   }
-  temperature2[current] = bmp.readTemperature();
-  illumination[current] = map(analogRead(AMBIENT_LIGHT_PIN), 0, 400, 255, 0);
-  pressure1[current]    = bmp.readPressure();
-  pressure2[current]    = bmp.readSealevelPressure(64.5 /* messured on 06.12.2014 */ );
-  altitude[current]    = bmp.readAltitude();
-  moisture[current] = map(analogRead(MOISTURE_PIN), 0, 1024, 0, 99);
+  temperature2 = bmp.readTemperature();
+  illumination = map(analogRead(AMBIENT_LIGHT_PIN), 0, 400, 255, 0);
+  pressure1    = bmp.readPressure();
+  pressure2    = bmp.readSealevelPressure(64.5 /* messured on 06.12.2014 */ );
+  altitude     = bmp.readAltitude();
+  moisture     = map(analogRead(MOISTURE_PIN), 0, 1024, 0, 99);
+
   
-  // DISPLAY DATA
-  if(current >= (SAMPLES-1)) {
-    float med_hum  = 0;
-    float med_temp1 = 0;
-    float med_temp2 = 0;
-    float med_ilum = 0;
-    float med_pressure1 = 0;
-    float med_pressure2 = 0;
-    float med_altitude = 0;
-    float med_moisture=0;
+  output_string = "$";
 
-    for(int i=0; i < SAMPLES; i++){
-      med_hum  += humidity[i];
-      med_temp1 += temperature1[i];
-      med_temp2 += temperature2[i];
-      med_ilum += illumination[i];
-      med_pressure1 += pressure1[i];
-      med_pressure2 += pressure2[i];
-      med_altitude  += altitude[i];
-      med_moisture  += moisture[i];
-    }
-
-    med_hum  /= SAMPLES;
-    med_temp1 /= SAMPLES;
-    med_temp2 /= SAMPLES;
-    med_ilum /= SAMPLES;
-    med_pressure1 /= SAMPLES;
-    med_pressure2 /= SAMPLES;
-    med_altitude /= SAMPLES;
-    med_moisture /= SAMPLES;
-
-    output_string = "$";
-
-    char tmp[10];
-    dtostrf(med_hum,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_temp1,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_temp2,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_ilum,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_pressure1/100,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_pressure2/100,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_altitude,1,2,tmp);
-    output_string.concat(tmp);
-    output_string += ";";
-    dtostrf(med_moisture,1,1,tmp);
-    output_string.concat(tmp);
-    output_string += "#";
-
-    current = 0;
-  }
+  char tmp[10];
+  float avg = avg_humidity.reading(humidity);
+  dtostrf(avg,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
   
+  avg = avg_temperature1.reading(temperature1);
+  dtostrf(avg,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
+  
+  avg = avg_temperature2.reading(temperature2);
+  dtostrf(avg,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
+  
+  avg = avg_illumination.reading(illumination);
+  dtostrf(avg,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
 
+  avg = avg_pressure1.reading(pressure1);
+  dtostrf(avg/100,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
+  
+  avg = avg_pressure2.reading(pressure2);
+  dtostrf(avg/100,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
+
+  avg = avg_altitude.reading(altitude);
+  dtostrf(avg,1,2,tmp);
+  output_string.concat(tmp);
+  output_string += ";";
+
+  avg = avg_moisture.reading(moisture);
+  dtostrf(avg,1,1,tmp);
+  output_string.concat(tmp);
+  output_string += "#";
+  
   Serial.println(output_string);
+
+  
 #ifdef TRANSMIT
   digitalWrite(A10, HIGH);
   digitalWrite(13, HIGH);
@@ -156,7 +138,7 @@ void loop()
   digitalWrite(A10, LOW);
 #endif
 
-  delay(1000);
+  delay(100);
   current++;
 }
 //
